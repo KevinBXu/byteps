@@ -263,6 +263,8 @@ def main():
         iteration = 0
         best_val_score = 0
         bps.byteps_declare_tensor("acc")
+
+        f = open("data" + opt.compressor + ".txt", "a")
         start_time = time.time()
         for epoch in range(epochs):
             tic = time.time()
@@ -292,8 +294,10 @@ def main():
                 # ##### Minghao
                 ####### code for getting TAA
                 if i % 20 == 0:
-                    print('time %.3f, acc %f' %
-                        (time.time() - start_time, train_acc))
+                    print('time %.3f, acc %f, epoch %i' %
+                        (time.time() - start_time, train_acc, epoch))
+                    f.write('%.3f, %f, %i' %
+                        (time.time() - start_time, train_acc, epoch))
                 # if i % 10 == 0:
                 #     logger.info('[Epoch %d Batch %d]' %
                 #         (epoch, i))
@@ -334,7 +338,7 @@ def main():
             if save_period and save_dir and (epoch + 1) % save_period == 0:
                 net.save_parameters('%s/cifar100-%s-%d.params' %
                                     (save_dir, model_name, epoch))
-
+        f.close()
         if save_period and save_dir:
             net.save_parameters('%s/cifar100-%s-%d.params' %
                                 (save_dir, model_name, epochs-1))
