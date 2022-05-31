@@ -18,6 +18,7 @@
 `gluon-cv/scripts/classification/cifar/train_cifar10.py`"""
 import argparse
 import logging
+from re import I
 import subprocess
 import time
 
@@ -82,6 +83,9 @@ def parse_args():
                         help='resume training from the model')
     parser.add_argument('--logging-file', type=str, default='baseline',
                         help='name of training log file')
+    ### Kevin
+    parser.add_argument('--sim-workers', type=int, default='1',
+                        help='number of simulated workers')
     # additional arguments for gradient compression
     parser.add_argument('--compressor', type=str, default='',
                         help='which compressor')
@@ -130,6 +134,7 @@ def main():
     num_workers = opt.num_workers
     nworker = bps.size()
     rank = bps.rank()
+    sim_workers = opt.sim_workers
 
     lr_decay = opt.lr_decay
     lr_decay_epoch = [int(i) for i in opt.lr_decay_epoch.split(',')]
@@ -227,16 +232,36 @@ def main():
         #     gluon.data.vision.CIFAR100(train=False, transform=transform_test),
         #     batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
-        train_data = gluon.data.DataLoader(
-            gluon.data.vision.CIFAR100(train=True).shard(
-                nworker, rank).transform_first(transform_train),
-            batch_size=batch_size, shuffle=True, last_batch='discard',
-            num_workers=num_workers)
+        ### original
+        # train_data = gluon.data.DataLoader(
+        #     gluon.data.vision.CIFAR100(train=True).shard(
+        #         nworker, rank).transform_first(transform_train),
+        #     batch_size=batch_size, shuffle=True, last_batch='discard',
+        #     num_workers=num_workers)
 
-        val_data = gluon.data.DataLoader(
-            gluon.data.vision.CIFAR100(train=False).shard(
-                nworker, rank).transform_first(transform_test),
-            batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        # val_data = gluon.data.DataLoader(
+        #     gluon.data.vision.CIFAR100(train=False).shard(
+        #         nworker, rank).transform_first(transform_test),
+        #     batch_size=batch_size, shuffle=False, num_workers=num_workers)
+
+        train_dataset = gluon.data.vision.CIFAR100(train=True)
+        train_dataset = train_dataset.sample(gluon.data.RandomSampler(len(train_dataset))) 
+        train_data = [None for _ in len(sim_workers)]
+        for i in range(sim_workers):
+            train_data[i] = gluon.data.DataLoader(
+                train_dataset.shard(
+                    sim_workers, I).transform_first(transform_train),
+                batch_size=batch_size, shuffle=True, last_batch='discard',
+                num_workers=num_workers)
+
+        val_dataset = gluon.data.vision.CIFAR100(train=False)
+        val_dataset = val_dataset.sample(gluon.data.RandomSampler(len(val_dataset))) 
+        val_data = [None for _ in len(sim_workers)]
+        for i in range(sim_workers):
+            val_data[i] = gluon.data.DataLoader(
+                val_dataset.shard(
+                    sim_workers, int).transform_first(transform_test),
+                batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
         params = net.collect_params()
 
@@ -265,6 +290,10 @@ def main():
         bps.byteps_declare_tensor("acc")
 
         f = open("data" + opt.compressor + ".txt", "a")
+
+
+
+
         start_time = time.time()
         for epoch in range(epochs):
             tic = time.time()
